@@ -62,6 +62,10 @@ class Authentik(Plugin):
     async def generate(self, evt: MessageEvent, invitee: str) -> None:
         await evt.mark_read()
 
+        if not invitee:
+            await evt.reply("please tell me who this invite is for")
+            return
+
         if not await self.can_manage(evt):
             return
 
@@ -70,7 +74,7 @@ class Authentik(Plugin):
 
         ex_date = datetime.datetime.strftime( \
                 (datetime.datetime.now() + datetime.timedelta(days=self.config["expiration"])), \
-                "%Y-%m-%dT%M:%H:%SZ")
+                "%Y-%m-%dT%H:%M")
         self.log.debug(f"DEBUG ex_date is set to {ex_date}")
         headers = {
             'Authorization': f"Bearer {self.config['admin_token']}",

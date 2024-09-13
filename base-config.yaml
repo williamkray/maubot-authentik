@@ -28,7 +28,7 @@ message: |
   Invitation link created!<br />
   <br />
   Your unique url for registering is:<br />
-  {ak_url}/if/flow/{slug}/?itoken={token}token}<br />
+  {ak_url}/if/flow/{slug}/?itoken={token}<br />
   This invite will expire in {expiration} days.<br />
   If it expires before use, you must request a new invite.
 
