@@ -1,0 +1,42 @@
+# command to trigger the bot
+command_aliases:
+  - sso
+  - auth
+
+# admin token for authentik API calls
+admin_token: mYsUp3rs3CretKEY12345
+
+# URL endpoint of the Authentik server, no trailing slash!
+ak_url: 'https://authentik.example.com'
+
+# identifier (UUID) of the specific FLOW to use in authentik for this invitation
+# you must have invitations configured in your Authentik instance, and they will
+# be associated with a specific flow!
+flow_id: 'someUUIDhere'
+
+# the html-formatted text you would like the bot to respond with
+# when a new token is generated. you may use the following variables:
+# {token} for the registration token
+# {ak_url} for the authentik server url set in this config
+# {expiration} for the expiration value set in this config
+#
+# if unset, a default message will be used.
+#
+# example message:
+#
+message: |
+  Invitation link created!<br />
+  <br />
+  Your unique url for registering is:<br />
+  {ak_url}/if/flow/{slug}/?itoken={token}token}<br />
+  This invite will expire in {expiration} days.<br />
+  If it expires before use, you must request a new invite.
+
+# the duration the invitation should be valid, in days, before expiring
+expiration: 3
+
+# approved members who can generate invite tokens. leave empty to allow everyone.
+allowed_users: []
+
+# people who should be denied from generating invites. ignored if using allowed_users.
+disallowed_users: []
