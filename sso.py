@@ -3,6 +3,7 @@ from typing import Optional, Type
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from maubot import Plugin, MessageEvent
 from maubot.handlers import command
+from mautrix.types import EventType
 
 import json
 import datetime
@@ -119,7 +120,39 @@ class Authentik(Plugin):
                     f"If it expires before use, you must request a new invitation."
                 ])
 
-        await evt.respond(msg, allow_html=True)
+        room_participants = await self.client.get_joined_members(evt.room_id)
+
+        if len(room_participants) > 2:
+            r = await evt.reply("imma slide in2 ur DMs", allow_html=True)
+
+            try:
+                new_room = await self.client.create_room(
+                    invitees=[evt.sender],
+                    is_direct=True,
+                    initial_state=[
+                        {
+                            "type": str(EventType.ROOM_NAME), 
+                            "content": {"name": f"{invitee} - account registration link"}
+                        }
+                    ]
+                )
+                self.log.debug(f"DM created with {evt.sender} for {invitee}")
+
+            except Exception as e:
+                self.log.error(e)
+                await evt.respond("snap, something went wrong, no cap.", edits=r)
+                return
+
+            try:
+                await self.client.send_notice(new_room, html=msg)
+                self.log.debug(f"Message sent to {evt.sender} for {invitee}")
+            except Exception as e:
+                self.log.error(e)
+                await evt.respond("snap, something went wrong, no cap.", edits=r)
+        else:
+            await evt.reply(msg, allow_html=True)
+
+            
 
 #   @sso.subcommand("status", help="Return the status of an invite token.")
 #   @command.argument("token", "Token", pass_raw=True, required=True)
