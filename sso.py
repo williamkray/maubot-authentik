@@ -155,51 +155,56 @@ class Authentik(Plugin):
 
     @web.get("/generate")
     async def web_generate_form(self, req: Request) -> Response:
-        html = """
+        sender = req.headers.get("X-authentik-username")
+        if not sender:
+            return Response(text="SSO authentication is required to use this endpoint", status=401)
+
+        html = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <title>Generate Invitation Link</title>
+            <meta name="authentik-username" content="{sender}">
             <style>
-                body {
+                body {{
                     font-family: Arial, sans-serif;
                     max-width: 800px;
                     margin: 20px auto;
                     padding: 0 20px;
-                }
-                .form-group {
+                }}
+                .form-group {{
                     margin-bottom: 20px;
-                }
-                input[type="text"] {
+                }}
+                input[type="text"] {{
                     width: 100%;
                     padding: 8px;
                     margin-top: 5px;
                     border: 1px solid #ddd;
                     border-radius: 4px;
-                }
-                button {
+                }}
+                button {{
                     background-color: #4CAF50;
                     color: white;
                     padding: 10px 20px;
                     border: none;
                     border-radius: 4px;
                     cursor: pointer;
-                }
-                button:hover {
+                }}
+                button:hover {{
                     background-color: #45a049;
-                }
-                #result {
+                }}
+                #result {{
                     margin-top: 20px;
                     padding: 15px;
                     border: 1px solid #ddd;
                     border-radius: 4px;
                     white-space: pre-wrap;
                     display: none;
-                }
-                .error {
+                }}
+                .error {{
                     color: #ff0000;
                     margin-top: 10px;
-                }
+                }}
             </style>
         </head>
         <body>
@@ -213,42 +218,43 @@ class Authentik(Plugin):
             <div id="error" class="error"></div>
 
             <script>
-                async function submitForm() {
+                async function submitForm() {{
                     const invitee = document.getElementById('invitee').value;
                     const resultDiv = document.getElementById('result');
                     const errorDiv = document.getElementById('error');
                     
-                    if (!invitee) {
+                    if (!invitee) {{
                         errorDiv.textContent = 'Please enter an invitee name';
                         return;
-                    }
+                    }}
 
-                    try {
-                        const response = await fetch(window.location.href, {
+                    try {{
+                        const response = await fetch(window.location.href, {{
                             method: 'POST',
-                            headers: {
+                            headers: {{
                                 'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
+                                'X-authentik-username': document.querySelector('meta[name="authentik-username"]').content
+                            }},
+                            body: JSON.stringify({{
                                 'invitee-name': invitee
-                            })
-                        });
+                            }})
+                        }});
 
                         const data = await response.json();
                         
-                        if (response.ok) {
+                        if (response.ok) {{
                             resultDiv.style.display = 'block';
-                            resultDiv.textContent = data.message;
+                            resultDiv.innerHTML = data.message;
                             errorDiv.textContent = '';
-                        } else {
+                        }} else {{
                             errorDiv.textContent = data.error || 'An error occurred';
                             resultDiv.style.display = 'none';
-                        }
-                    } catch (error) {
+                        }}
+                    }} catch (error) {{
                         errorDiv.textContent = 'Failed to submit form: ' + error;
                         resultDiv.style.display = 'none';
-                    }
-                }
+                    }}
+                }}
             </script>
         </body>
         </html>
