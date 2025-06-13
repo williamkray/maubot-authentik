@@ -2,8 +2,9 @@ from typing import Optional, Type
 
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from maubot import Plugin, MessageEvent
-from maubot.handlers import command
+from maubot.handlers import command, web
 from mautrix.types import EventType
+from aiohttp.web import Request, Response, json_response
 
 import json
 import datetime
@@ -152,75 +153,204 @@ class Authentik(Plugin):
         else:
             await evt.reply(msg, allow_html=True)
 
+    @web.get("/generate")
+    async def web_generate_form(self, req: Request) -> Response:
+        html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Generate Invitation Link</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    max-width: 800px;
+                    margin: 20px auto;
+                    padding: 0 20px;
+                }
+                .form-group {
+                    margin-bottom: 20px;
+                }
+                input[type="text"] {
+                    width: 100%;
+                    padding: 8px;
+                    margin-top: 5px;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                }
+                button {
+                    background-color: #4CAF50;
+                    color: white;
+                    padding: 10px 20px;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                }
+                button:hover {
+                    background-color: #45a049;
+                }
+                #result {
+                    margin-top: 20px;
+                    padding: 15px;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    white-space: pre-wrap;
+                    display: none;
+                }
+                .error {
+                    color: #ff0000;
+                    margin-top: 10px;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>Generate Invitation Link</h1>
+            <div class="form-group">
+                <label for="invitee">Invitee Name:</label>
+                <input type="text" id="invitee" name="invitee" required>
+            </div>
+            <button onclick="submitForm()">Generate Invitation</button>
+            <div id="result"></div>
+            <div id="error" class="error"></div>
+
+            <script>
+                async function submitForm() {
+                    const invitee = document.getElementById('invitee').value;
+                    const resultDiv = document.getElementById('result');
+                    const errorDiv = document.getElementById('error');
+                    
+                    if (!invitee) {
+                        errorDiv.textContent = 'Please enter an invitee name';
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(window.location.href, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                'invitee-name': invitee
+                            })
+                        });
+
+                        const data = await response.json();
+                        
+                        if (response.ok) {
+                            resultDiv.style.display = 'block';
+                            resultDiv.textContent = data.message;
+                            errorDiv.textContent = '';
+                        } else {
+                            errorDiv.textContent = data.error || 'An error occurred';
+                            resultDiv.style.display = 'none';
+                        }
+                    } catch (error) {
+                        errorDiv.textContent = 'Failed to submit form: ' + error;
+                        resultDiv.style.display = 'none';
+                    }
+                }
+            </script>
+        </body>
+        </html>
+        """
+        return Response(text=html, content_type='text/html')
+
+    @web.post("/generate")
+    async def web_generate(self, req: Request) -> Response:
+        try:
+            data = await req.json()
+            invitee = data.get("invitee-name")
+            sender = req.headers.get("X-authentik-username")
+
+            if not invitee:
+                return json_response({"error": "invitee-name is required"}, status=400)
+            if not sender:
+                return json_response({"error": "SSO authentication is required to use this endpoint"}, status=400)
+
+            # Create a mock MessageEvent-like object
+            class MockEvent:
+                def __init__(self, sender):
+                    self.sender = sender
+                    self.room_id = None
+
+                async def mark_read(self):
+                    pass
+
+                async def reply(self, msg, allow_html=True):
+                    return msg
+
+            mock_evt = MockEvent(sender)
+
+            if not await self.can_manage(mock_evt):
+                return json_response({"error": "User not authorized"}, status=403)
+
+            self.set_api_endpoints()
+            invitee = self.sanitize(invitee)
+
+            ex_date = datetime.datetime.strftime(
+                (datetime.datetime.now() + datetime.timedelta(days=self.config["expiration"])),
+                "%Y-%m-%dT%H:%M")
             
+            headers = {
+                'Authorization': f"Bearer {self.config['admin_token']}",
+                'Content-Type': 'application/json'
+            }
+            
+            try:
+                flow_id = self.config["flow_id"]
+                response = await self.http.post(
+                    f"{self.config['api_url']}", 
+                    headers=headers,
+                    json={
+                        "name": invitee,
+                        "fixed_data": {"attributes.notes": f"invited by {sender}"},
+                        "expires": ex_date,
+                        "single_use": True,
+                        "flow": flow_id
+                    }
+                )
+                status = response.status
+                resp_json = await response.json()
+            except Exception as e:
+                return json_response({
+                    "error": f"Failed to create invitation: {str(e)}"
+                }, status=500)
 
-#   @sso.subcommand("status", help="Return the status of an invite token.")
-#   @command.argument("token", "Token", pass_raw=True, required=True)
-#   async def status(self, evt: MessageEvent, token: str) -> None:
-#       await evt.mark_read()
+            try:
+                token = resp_json['pk']
+                slug = resp_json['flow_obj']['slug']
+            except Exception as e:
+                return json_response({
+                    "error": f"Invalid response from Authentik: {str(e)}"
+                }, status=500)
 
-#       if not await self.can_manage(evt):
-#           return
+            if self.config['message']:
+                msg = self.config["message"].format(
+                    token=token,
+                    ak_url=self.config['ak_url'],
+                    slug=slug,
+                    expiration=self.config['expiration']
+                )
+            else:
+                msg = '\n'.join([
+                    "Invitation link created!",
+                    "",
+                    "Your unique url for registering is:",
+                    f"{self.config['ak_url']}/if/flow/{slug}/?itoken={token}",
+                    f"This invite will expire in {self.config['expiration']} days.",
+                    "If it expires before use, you must request a new invitation."
+                ])
 
-#       self.set_api_endpoints()
+            return json_response({
+                "message": msg,
+                "token": token,
+                "url": f"{self.config['ak_url']}/if/flow/{slug}/?itoken={token}"
+            })
 
-#       if not token:
-#           await evt.respond("you must supply a token to check")
-
-#       headers = {
-#           'Authorization': f"SharedSecret {self.config['admin_secret']}",
-#           'Content-Type': 'application/json'
-#           }
-
-#       try:
-#           response = await self.http.get(f"{self.config['api_url']}/token/{token}", headers=headers)
-#           resp_json = await response.json()
-#       except Exception as e:
-#           await evt.respond(f"request failed: {e.message}")
-#           return None
-#       
-#       # this isn't formatted nicely but i don't really care that much
-#       await evt.respond(f"Status of token {token}: \n<pre><code format=json>{json.dumps(resp_json, indent=4)}</code></pre>", allow_html=True)
-
-#   @sso.subcommand("revoke", help="Disable an existing invite token.")
-#   @command.argument("token", "Token", pass_raw=True, required=True)
-#   async def revoke(self, evt: MessageEvent, token: str) -> None:
-#       await evt.mark_read()
-
-#       if not await self.can_manage(evt):
-#           return
-
-#       self.set_api_endpoints()
-
-#       if not token:
-#           await evt.respond("you must supply a token to revoke")
-
-#       headers = {
-#           'Authorization': f"SharedSecret {self.config['admin_secret']}",
-#           'Content-Type': 'application/json'
-#           }
-
-#       # this is a really gross way of handling legacy installs and should be cleaned up
-#       # basically this command used to use PUT but now uses PATCH
-#       if self.config["legacy_mr"] == True:
-#           try:
-#               response = await self.http.put(f"{self.config['api_url']}/token/{token}", headers=headers, \
-#                       json={"disable": True})
-#               resp_json = await response.json()
-#           except Exception as e:
-#               await evt.respond(f"request failed: {e.message}")
-#               return None
-#       else:
-#           try:
-#               response = await self.http.patch(f"{self.config['api_url']}/token/{token}", headers=headers, \
-#                       json={"disabled": True})
-#               resp_json = await response.json()
-#           except Exception as e:
-#               await evt.respond(f"request failed: {e.message}")
-#               return None
-#       
-#       # this isn't formatted nicely but i don't really care that much
-#       await evt.respond(f"<pre><code format=json>{json.dumps(resp_json, indent=4)}</code></pre>", allow_html=True)
+        except Exception as e:
+            return json_response({
+                "error": f"Internal server error: {str(e)}"
+            }, status=500)
 
     @sso.subcommand("list", help="List all invites that have been generated.")
     async def list(self, evt: MessageEvent) -> None:
