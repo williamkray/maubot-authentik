@@ -27,13 +27,6 @@ class Authentik(Plugin):
         await super().start()
         self.config.load_and_update()
         
-        # Only register web endpoints if serve_web is enabled
-        if self.config.get("serve_web", False):
-            self.webapp.add_routes([
-                web.get("/generate", self.web_generate_form),
-                web.post("/generate", self.web_generate)
-            ])
-
     @classmethod
     def get_config_class(cls) -> Type[BaseProxyConfig]:
         return Config
@@ -187,7 +180,7 @@ class Authentik(Plugin):
                     margin-bottom: 20px;
                 }}
                 input[type="text"] {{
-                    width: 100%;
+                    width: 50%;
                     padding: 8px;
                     margin-top: 5px;
                     border: 1px solid #ddd;
