@@ -20,11 +20,19 @@ class Config(BaseProxyConfig):
         helper.copy("disallowed_users")
         helper.copy("expiration")
         helper.copy("message")
+        helper.copy("serve_web")
 
 class Authentik(Plugin):
     async def start(self) -> None:
         await super().start()
         self.config.load_and_update()
+        
+        # Only register web endpoints if serve_web is enabled
+        if self.config.get("serve_web", False):
+            self.webapp.add_routes([
+                web.get("/generate", self.web_generate_form),
+                web.post("/generate", self.web_generate)
+            ])
 
     @classmethod
     def get_config_class(cls) -> Type[BaseProxyConfig]:
@@ -155,6 +163,9 @@ class Authentik(Plugin):
 
     @web.get("/generate")
     async def web_generate_form(self, req: Request) -> Response:
+        if not self.config.get("serve_web", False):
+            return Response(text="Web interface is disabled", status=403)
+            
         sender = req.headers.get("X-authentik-username")
         if not sender:
             return Response(text="SSO authentication is required to use this endpoint", status=401)
@@ -263,6 +274,9 @@ class Authentik(Plugin):
 
     @web.post("/generate")
     async def web_generate(self, req: Request) -> Response:
+        if not self.config.get("serve_web", False):
+            return Response(text="Web interface is disabled", status=403)
+            
         try:
             data = await req.json()
             invitee = data.get("invitee-name")

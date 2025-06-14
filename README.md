@@ -1,7 +1,7 @@
 this is a [maubot](https://github.com/maubot/maubot) plugin which interacts with Authentik APIs to manage invitations
 via your pre-configured invitation enrollment flow. if you do not know what that means, this bot is not for you.
 
-modify the config to point to your authentik deployment, generate and include and admin user API token to authenticate, let it rip.
+modify the config to point to your authentik deployment, generate and include an admin user API token to authenticate, let it rip.
 
 note: you MUST include the flow UUID you want to associate with your invitation generation. in order to find this:
 
@@ -22,3 +22,8 @@ to list all outstanding invitation links:
 
     !invite list
 
+this bot now also includes a web endpoint for users to use instead of having to remember a bot command! it is assumed that the maubot instance running this bot is behind Authentik forwardauth proxy, and is correctly passing headers to the web endpoint. if you set that up, you can safely enable the web endpoint in this plugin's config.
+
+the web endpoint `/generate` can be found at the plugin path defined in your maubot config. by default this will be:
+
+    https://<yourpublicendpoint.tld>/_matrix/maubot/plugin/<yourbotinstance>/generate

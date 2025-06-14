@@ -40,3 +40,6 @@ allowed_users: []
 
 # people who should be denied from generating invites. ignored if using allowed_users.
 disallowed_users: []
+
+# whether to enable the web interface for generating invites
+serve_web: false
