@@ -4,7 +4,7 @@ from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from maubot import Plugin, MessageEvent
 from maubot.handlers import command, web
 from mautrix.types import EventType
-from aiohttp.web import Request, Response, json_response
+from aiohttp.web import Request, Response, json_response, HTTPFound
 
 import json
 import datetime
@@ -153,6 +153,13 @@ class Authentik(Plugin):
                 await evt.respond("snap, something went wrong, no cap.", edits=r)
         else:
             await evt.reply(msg, allow_html=True)
+
+    @web.get("/")
+    async def redirection(self, req: Request) -> Response:
+        if not self.config.get("serve_web", False):
+            return Response(text="Web interface is disabled", status=403)
+
+        raise HTTPFound('/generate')
 
     @web.get("/generate")
     async def web_generate_form(self, req: Request) -> Response:
